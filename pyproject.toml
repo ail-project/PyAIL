@@ -6,6 +6,8 @@ authors = ["Aurelien Thirion (terrtia) <aurelien.thirion@circl.lu>"]
 license = "BSD-2-Clause"
 repository = "https://github.com/ail-project/PyAIL"
 
+readme = "README.md"
+
 [tool.poetry.dependencies]
 python = "^3.6"
 requests = "^2.23.0"

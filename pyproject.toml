@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "pyail"
+version = "0.1.0"
+description = ""
+authors = ["Aurelien Thirion (terrtia) <aurelien.thirion@circl.lu>"]
+license = "BSD-2-Clause"
+repository = "https://github.com/ail-project/PyAIL"
+
+[tool.poetry.dependencies]
+python = "^3.6"
+requests = "^2.23.0"
+
+[tool.poetry.dev-dependencies]
+pytest = "^5.2"
+
+[build-system]
+requires = ["poetry>=0.12"]
+build-backend = "poetry.masonry.api"

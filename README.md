@@ -5,7 +5,7 @@ PyAIL
 
 # PyAIL - Python library using the AIL Rest API
 
-PyMISP is a Python library to access [AIL](https://github.com/ail-project/ail-framework) platforms via their REST API.
+PyAIL is a Python library to access [AIL](https://github.com/ail-project/ail-framework) platforms via their REST API.
 
 ## Install from pip
 

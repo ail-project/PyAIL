@@ -17,3 +17,26 @@ Install pyail:
 ```bash
 pip3 install pyail
 ```
+
+## Usage
+
+### Feeding items to AIL
+
+```python
+from pyail import PyAIL
+
+ail_url = 'https://localhost:7000'
+ail_key = '<AIL API KEY>'
+try:
+    pyail = PyAIL(ail_url, ail_key, ssl=False)
+except Exception as e:
+    print(e)
+    sys.exit(0)
+
+data = 'my item content'
+metadata = {}
+source = '<FEEDER NAME>'
+source_uuid = '<feeder UUID v4>'
+
+pyail.feed_json_item(data, metadata, source, source_uuid)
+```

@@ -11,7 +11,7 @@ from datetime import date, datetime
 from urllib.parse import urljoin
 
 from . import __version__, everything_broken
-from .core import encode_and_compress_data, get_data_sha256
+from .core import encode_and_compress_data, get_data_sha256, ail_json_default
 from .exceptions import PyAILError, MissingDependency, NoURL, NoKey, PyAILInvalidFormat, AILServerError, PyAILNotImplementedYet, PyAILUnexpectedResponse, PyAILEmptyResponse
 
 logger = logging.getLogger('pyail')
@@ -84,9 +84,10 @@ class PyAIL:
         dict_to_send['source'] = source
         dict_to_send['source_uuid'] = source_uuid
         dict_to_send['default_encoding'] = default_encoding
-        print(dict_to_send)
         response = self._prepare_request('POST', f'api/{self.api_version}/import/json/item', data=dict_to_send)
         return self._check_json_response(response)
+
+    # feed json file  -------------------
 
     ## -- END Feed AIL -- ##
 
@@ -147,7 +148,7 @@ class PyAIL:
                 if isinstance(data, dict):  # Else, we can directly json encode.
                     # Remove None values.
                     data = {k: v for k, v in data.items() if v is not None}
-                d = json.dumps(data)
+                d = json.dumps(data, default=ail_json_default)
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f'{request_type} - {url}')

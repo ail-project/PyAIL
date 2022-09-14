@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
 import json
@@ -89,7 +88,20 @@ class PyAIL:
 
     # feed json file  -------------------
 
+    # # TODO: return task uuid + add check status
+    # Crawler #
+    def crawl_url(self, url, har=False, screenshot=False, depth_limit=1):
+        dict_to_send = {}
+        dict_to_send['url'] = url
+        dict_to_send['har'] = har
+        dict_to_send['screenshot'] = screenshot
+        dict_to_send['depth_limit'] = int(depth_limit)
+        response = self._prepare_request('POST', f'api/{self.api_version}/add/crawler/task', data=dict_to_send)
+        return self._check_json_response(response)
+
     ## -- END Feed AIL -- ##
+
+
 
     ## Internal methods ###
 

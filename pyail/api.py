@@ -90,12 +90,20 @@ class PyAIL:
 
     # # TODO: return task uuid + add check status
     # Crawler #
-    def crawl_url(self, url, har=False, screenshot=False, depth_limit=1):
+    def crawl_url(self, url, har=False, screenshot=False, depth_limit=1, frequency=None, cookiejar=None, proxy='force_tor'):
         dict_to_send = {}
         dict_to_send['url'] = url
         dict_to_send['har'] = har
         dict_to_send['screenshot'] = screenshot
         dict_to_send['depth_limit'] = int(depth_limit)
+        if cookiejar:
+            dict_to_send['cookiejar'] = cookiejar
+        # can be set to 'web', 'onion', 'tor' or 'force_tor'
+        if proxy:
+            dict_to_send['proxy'] = proxy
+        # 'monthly', 'weekly', 'daily', 'hourly' or a dict {'minutes': 0, 'hours':0, 'days': 0, 'weeks': 0, 'months': 0}
+        if frequency:
+            dict_to_send['frequency'] = frequency
         response = self._prepare_request('POST', f'api/{self.api_version}/add/crawler/task', data=dict_to_send)
         return self._check_json_response(response)
 

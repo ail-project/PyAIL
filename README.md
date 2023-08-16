@@ -40,3 +40,16 @@ source_uuid = '<feeder UUID v4>'
 
 pyail.feed_json_item(data, metadata, source, source_uuid)
 ```
+
+
+# License
+
+
+This software is licensed under BSD 3-Clause License
+
+Copyright (C) 2020-2023 CIRCL - Computer Incident Response Center Luxembourg
+
+Copyright (C) 2020-2023 Aurelien Thirion
+
+
+

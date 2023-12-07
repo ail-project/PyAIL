@@ -107,6 +107,20 @@ class PyAIL:
         response = self._prepare_request('POST', f'api/{self.api_version}/add/crawler/task', data=dict_to_send)
         return self._check_json_response(response)
 
+    def add_crawler_capture(self, task_uuid, capture_uuid, url, har=False, screenshot=False, depth_limit=1, proxy='force_tor'):
+        dict_to_send = {}
+        dict_to_send['task_uuid'] = task_uuid
+        dict_to_send['capture_uuid'] = capture_uuid
+        dict_to_send['url'] = url
+        dict_to_send['har'] = har
+        dict_to_send['screenshot'] = screenshot
+        dict_to_send['depth_limit'] = int(depth_limit)
+        # can be set to 'web', 'onion', 'tor' or 'force_tor'
+        if proxy:
+            dict_to_send['proxy'] = proxy
+        response = self._prepare_request('POST', f'api/{self.api_version}/add/crawler/capture', data=dict_to_send)
+        return self._check_json_response(response)
+
     ## -- END Feed AIL -- ##
 
 

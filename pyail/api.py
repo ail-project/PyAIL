@@ -58,10 +58,11 @@ class PyAIL:
             # Make sure the AIL instance is working and the URL is valid
             # # TODO: check version compatibility
 
-            self.ping_ail()
+            self.ping()
 
         except Exception as e:
-            traceback.print_exc()
+            if debug:
+                traceback.print_exc()
             raise PyAILError(f'Unable to connect to AIL ({self.root_url}). Please make sure the API key and the URL are correct (https is required): {e}')
 
     # # TODO: verify version compatibility between AIL and pyAIL
@@ -69,6 +70,10 @@ class PyAIL:
     ## BEGIN Server test ##
 
     def ping_ail(self):
+        print('WARNING DEPRECATED: Please use ping()')
+        return self.ping()
+
+    def ping(self):
         response = self._prepare_request('GET', f'api/{self.api_version}/ping')
         return self._check_json_response(response)
 

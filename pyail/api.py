@@ -4,6 +4,7 @@ import json
 import logging
 import requests
 import sys
+import time
 import traceback
 
 from datetime import date, datetime
@@ -14,6 +15,25 @@ from .core import encode_and_compress_data, get_data_sha256, ail_json_default
 from .exceptions import PyAILError, MissingDependency, NoURL, NoKey, PyAILInvalidFormat, AILServerError, PyAILNotImplementedYet, PyAILUnexpectedResponse, PyAILEmptyResponse
 
 logger = logging.getLogger('pyail')
+
+# class AbstractAIL
+
+# class Investigation:
+#     def __init__(self, investigation_uuid):
+#         self.uuid = investigation_uuid
+#
+#
+# class AILObject:
+#     def __init__(self, obj_type, obj_subtype, obj_id):
+#         self.type = obj_type
+#         self.subtype = obj_subtype
+#         self.id = obj_id
+#
+#         # first_seen
+#         # last_seen
+#
+#     # def add_tag(self, tag):
+
 
 class PyAIL:
     """Python API for AIL
@@ -67,7 +87,7 @@ class PyAIL:
 
     # # TODO: verify version compatibility between AIL and pyAIL
 
-    ## BEGIN Server test ##
+    #### AIL Server ####
 
     def ping_ail(self):
         print('WARNING DEPRECATED: Please use ping()')
@@ -77,7 +97,35 @@ class PyAIL:
         response = self._prepare_request('GET', f'api/{self.api_version}/ping')
         return self._check_json_response(response)
 
-    ## -- END Server test -- ##
+    def get_uuid(self):
+        response = self._prepare_request('GET', f'api/{self.api_version}/uuid')
+        return self._check_json_response(response)
+
+    def get_version(self):
+        response = self._prepare_request('GET', f'api/{self.api_version}/version')
+        return self._check_json_response(response)
+
+    ## -- AIL Server -- ##
+
+    #### AIL Object ####  # TODO get meta/object fields description
+
+    # def exists_object(self, object_type, object_subtype, object_id):
+    #     pass
+    #
+    # def get_object(self, object_type, object_subtype, object_id):
+    #     pass
+
+    ## -- AIL Object -- ##
+
+    #### AIL Object ####
+
+    ## -- Investigation -- ##
+    #
+    # def get_investigations(self):
+    #     pass
+    #
+    # def get_investigation(self, investigation_uuid):
+    #     pass
 
     ## BEGIN Feed AIL ##
     def feed_json_item(self, data, meta, source, source_uuid, default_encoding='UTF-8'):
@@ -88,6 +136,7 @@ class PyAIL:
         dict_to_send['source'] = source
         dict_to_send['source_uuid'] = source_uuid
         dict_to_send['default_encoding'] = default_encoding
+        dict_to_send['timestamp'] = int(time.time())
         response = self._prepare_request('POST', f'api/{self.api_version}/import/json/item', data=dict_to_send)
         return self._check_json_response(response)
 
@@ -213,3 +262,24 @@ class PyAIL:
 
     def __repr__(self):
         return f'<{self.__class__.__name__}(url={self.root_url})'
+
+    #################################################################################
+    #################################################################################
+    #################################################################################
+
+    # AIL OBJECTS for a tpe ????
+
+    #################################################################################
+    #################################################################################
+    #################################################################################
+
+    # add_tag(ref_obj, tag)
+
+    # add_investigation / create_investigation
+    # add_tracker / create_tracker
+
+    # add_object / create_object -> accept AILObject + dict/json -> type or var like pythonify
+
+    # direct_call but a with better name
+
+

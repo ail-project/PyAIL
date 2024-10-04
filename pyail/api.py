@@ -144,7 +144,7 @@ class PyAIL:
 
     # # TODO: return task uuid + add check status
     # Crawler #
-    def crawl_url(self, url, har=False, screenshot=False, depth_limit=1, frequency=None, cookiejar=None, proxy='force_tor'):
+    def crawl_url(self, url, har=True, screenshot=True, depth_limit=1, frequency=None, cookiejar=None, proxy='force_tor'):
         dict_to_send = {}
         dict_to_send['url'] = url
         dict_to_send['har'] = har
@@ -173,6 +173,10 @@ class PyAIL:
         if proxy:
             dict_to_send['proxy'] = proxy
         response = self._prepare_request('POST', f'api/{self.api_version}/add/crawler/capture', data=dict_to_send)
+        return self._check_json_response(response)
+
+    def onion_lookup(self, onion):
+        response = self._prepare_request('GET', f'api/{self.api_version}/lookup/onion/{onion}')
         return self._check_json_response(response)
 
     ## -- END Feed AIL -- ##

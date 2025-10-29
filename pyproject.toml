@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pyail"
-version = "0.0.9"
+version = "0.0.10"
 description = ""
 authors = ["Aurelien Thirion (terrtia) <aurelien.thirion@circl.lu>"]
 license = "BSD-2-Clause"

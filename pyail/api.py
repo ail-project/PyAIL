@@ -175,6 +175,50 @@ class PyAIL:
         response = self._prepare_request('POST', f'api/{self.api_version}/add/crawler/capture', data=dict_to_send)
         return self._check_json_response(response)
 
+    def import_crawler_capture(self, capture=None, capture_file=None):
+        """
+        Import a crawler capture in Lacus format.
+
+        The Lacus crawler capture is expected to follow the structure:
+
+        {
+            "html": <str>,                        # Raw HTML content of the page
+
+            "last_redirected_url": <str>,         # Final resolved URL
+
+            "png": <str | null>,                  # Optional - Base64-encoded screenshot
+
+            "har": <dict | null>,                 # Optional - HAR capture as JSON/dict
+
+            "potential_favicons": <list[str]>,    # Optional - List of base64-encoded icons
+
+            "children": <list[dict]>              # Optional - Recursively embedded captures
+
+        }
+
+        One of the following must be provided:
+          • ``capture``: A dictionary in Lacus format.
+          • ``capture_file``: Path to a JSON file containing a Lacus capture.
+
+        If ``capture_file`` is provided and ``capture`` is not,
+        the file will be read and the parsed JSON used as the capture payload.
+
+        :param capture: (dict) A Lacus-format capture structure.
+        :type capture: dict | None
+        :param capture_file: (str) Path to a JSON capture file.
+        :type capture_file: str | None
+
+        :return: A dict containing the UUID of the imported capture. {"uuid": "<UUID>"}
+        :rtype: dict
+        """
+        if capture_file and not capture:
+            with open(capture_file, 'r') as f:
+                capture = f.read()
+        if not capture:
+            raise Exception('capture_file or capture must be provided')
+        response = self._prepare_request('POST', f'api/{self.api_version}/import/crawler/capture', data=capture)
+        return self._check_json_response(response)
+
     def import_lacus_cookiejar(self, url, storage):
         dict_to_send = {}
         dict_to_send['url'] = url

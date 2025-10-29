@@ -20,7 +20,7 @@ pip3 install pyail
 
 ## Usage
 
-### Feeding items to AIL
+### Creating an AIL client
 
 ```python
 from pyail import PyAIL
@@ -33,6 +33,12 @@ except Exception as e:
     print(e)
     sys.exit(0)
 
+pyail.ping()
+```
+
+### Feeding items to AIL
+
+```python
 data = 'my item content'
 metadata = {}
 source = '<FEEDER NAME>'
@@ -40,16 +46,20 @@ source_uuid = '<feeder UUID v4>'
 
 pyail.feed_json_item(data, metadata, source, source_uuid)
 ```
+### Import Crawler capture
 
+```python
+pyail.import_crawler_capture(capture={"last_redirected_url": "https://mywebsite.com", "html": "<html><body><h1>HELLO WORLD</h1></body></html>"})
+```
 
 # License
 
 
 This software is licensed under BSD 3-Clause License
 
-Copyright (C) 2020-2023 CIRCL - Computer Incident Response Center Luxembourg
+Copyright (C) 2020-2025 CIRCL - Computer Incident Response Center Luxembourg
 
-Copyright (C) 2020-2023 Aurelien Thirion
+Copyright (C) 2020-2025 Aurelien Thirion
 
 
 

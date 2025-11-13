@@ -128,10 +128,13 @@ class PyAIL:
     #     pass
 
     ## BEGIN Feed AIL ##
-    def feed_json_item(self, data, meta, source, source_uuid, default_encoding='UTF-8'):
+    def feed_json_item(self, data, meta, source, source_uuid, data_sha256=None, default_encoding='UTF-8'):
         dict_to_send = {}
         dict_to_send['data'] = encode_and_compress_data(data)
-        dict_to_send['data-sha256'] = get_data_sha256(data)
+        if data_sha256:
+            dict_to_send['data-sha256'] = data_sha256
+        else:
+            dict_to_send['data-sha256'] = get_data_sha256(data)
         dict_to_send['meta'] = meta
         dict_to_send['source'] = source
         dict_to_send['source_uuid'] = source_uuid

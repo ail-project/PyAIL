@@ -1,20 +1,25 @@
-[tool.poetry]
+[project]
 name = "pyail"
 version = "0.0.11"
-description = ""
-authors = ["Aurelien Thirion (terrtia) <aurelien.thirion@circl.lu>"]
+description = "Python API for AIL"
+authors = [
+    {name="Aurelien Thirion (terrtia)", email="<aurelien.thirion@circl.lu>"}
+]
 license = "BSD-2-Clause"
-repository = "https://github.com/ail-project/PyAIL"
 
 readme = "README.md"
+
+[project.urls]
+repository = "https://github.com/ail-project/PyAIL"
+issues = "https://github.com/ail-project/PyAIL/issues"
 
 [tool.poetry.dependencies]
 python = "^3.8"
 requests = "^2.23.0"
 
-[tool.poetry.dev-dependencies]
+[poetry.group.dev.dependencies]
 pytest = "^5.2"
 
 [build-system]
-requires = ["poetry>=0.12"]
+requires = ["poetry>=2.0"]
 build-backend = "poetry.masonry.api"

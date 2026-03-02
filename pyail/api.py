@@ -235,7 +235,16 @@ class PyAIL:
 
     ## -- END Feed AIL -- ##
 
+    #### ADMIN ####
 
+    def create_user(self, org_uuid, user_id, password=None, otp=True, send_email=True):
+        dict_to_send = {'org_uuid': org_uuid, 'id': user_id, 'otp': otp, 'send_email': send_email}
+        if password:
+            dict_to_send['password'] = password
+        response = self._prepare_request('POST', f'api/{self.api_version}/user/create', data=dict_to_send)
+        return self._check_json_response(response)
+
+    ## -- ADMIN -- ##
 
     ## Internal methods ###
 

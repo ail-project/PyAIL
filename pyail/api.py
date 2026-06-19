@@ -229,6 +229,14 @@ class PyAIL:
         response = self._prepare_request('POST', f'api/{self.api_version}/lacus/cookiejar/import', data=dict_to_send)
         return self._check_json_response(response)
 
+    def forum_account_login(self, forum_id, account_id, local_storage):
+        dict_to_send = {}
+        dict_to_send['forum_id'] = forum_id
+        dict_to_send['account_id'] = account_id
+        dict_to_send['local_storage'] = local_storage
+        response = self._prepare_request('POST', f'api/{self.api_version}/forum/crawler/account/login', data=dict_to_send)
+        return self._check_json_response(response)
+
     def onion_lookup(self, onion):
         response = self._prepare_request('GET', f'api/{self.api_version}/lookup/onion/{onion}')
         return self._check_json_response(response)

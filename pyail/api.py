@@ -229,7 +229,7 @@ class PyAIL:
         response = self._prepare_request('POST', f'api/{self.api_version}/lacus/cookiejar/import', data=dict_to_send)
         return self._check_json_response(response)
 
-    def get_crawler_default_user_agent(self, onion):
+    def get_crawler_default_user_agent(self):
         response = self._prepare_request('GET', f'api/{self.api_version}/crawler/user-agent/default')
         return self._check_json_response(response)
 

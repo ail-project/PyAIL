@@ -2,13 +2,20 @@
 
 import json
 import logging
+import os
 import requests
+import re
+import shutil
 import sys
+import tempfile
 import time
 import traceback
+import unicodedata
 
 from datetime import date, datetime
+from pathlib import Path
 from urllib.parse import urljoin
+from uuid import uuid4
 
 from . import __version__, everything_broken
 from .core import encode_and_compress_data, get_data_sha256, ail_json_default
@@ -104,6 +111,462 @@ class PyAIL:
     def get_version(self):
         response = self._prepare_request('GET', f'api/{self.api_version}/version')
         return self._check_json_response(response)
+
+    #### Chats ####
+
+    def get_chat_instances(self, page=1, page_size=50):
+        """List chat instances available to the authenticated user.
+
+        The returned dictionary contains ``instances`` and ``pagination``.
+        Pagination values are passed to AIL, which applies the limits and
+        normalization defined by the server API.
+
+        :param page: One-based result page to request.
+        :type page: int
+        :param page_size: Maximum number of instances to request per page.
+        :type page_size: int
+        :return: The instance collection and its pagination metadata.
+        :rtype: dict
+        """
+        params = {'page': page, 'page_size': page_size}
+        response = self._prepare_request(
+            'GET', f'api/{self.api_version}/chat/instances', params=params
+        )
+        return self._check_json_response(response)
+
+    def get_chats(self, instance_uuid, languages=None, page=1, page_size=50):
+        """List chats belonging to a chat instance.
+
+        The returned dictionary contains the instance metadata, a ``chats``
+        collection, and pagination metadata. Language tags are not validated
+        or normalized by PyAIL. A comma-separated string is sent as one query
+        value, while a sequence is encoded by Requests as repeated values.
+
+        :param instance_uuid: UUID of the chat instance to inspect.
+        :type instance_uuid: str
+        :param languages: Optional BCP 47 language tag or tags, expressed as a
+            comma-separated string or a sequence.
+        :type languages: str or sequence or None
+        :param page: One-based result page to request.
+        :type page: int
+        :param page_size: Maximum number of chats to request per page.
+        :type page_size: int
+        :return: The instance metadata, chats, and pagination metadata.
+        :rtype: dict
+        """
+        params = self._chat_query_params(page, page_size, languages)
+        response = self._prepare_request(
+            'GET',
+            f'api/{self.api_version}/chat/instances/{instance_uuid}/chats',
+            params=params,
+        )
+        return self._check_json_response(response)
+
+    def get_chat_messages(self, instance_uuid, id, languages=None,
+                          page=1, page_size=500):
+        """Retrieve one page of messages attached directly to a chat.
+
+        Messages belonging to subchannels or threads are not included. Use
+        :meth:`get_chat_content` to retrieve a complete chat hierarchy.
+
+        :param instance_uuid: UUID of the chat instance.
+        :type instance_uuid: str
+        :param id: Original, unsanitized chat identifier returned by AIL.
+        :type id: str
+        :param languages: Optional comma-separated language string or sequence
+            of BCP 47 tags. Values are forwarded unchanged to AIL.
+        :type languages: str or sequence or None
+        :param page: One-based message page to request.
+        :type page: int
+        :param page_size: Maximum number of messages to request per page.
+        :type page_size: int
+        :return: Chat metadata, direct messages, and pagination metadata.
+        :rtype: dict
+        """
+        return self._get_chat_container_messages(
+            'chat/messages', instance_uuid, id, languages, page, page_size
+        )
+
+    def get_chat_subchannel_messages(self, instance_uuid, id,
+                                     languages=None, page=1, page_size=500):
+        """Retrieve one page of messages attached directly to a subchannel.
+
+        Messages belonging to the subchannel's threads are not included.
+
+        :param instance_uuid: UUID of the chat instance.
+        :type instance_uuid: str
+        :param id: Original subchannel identifier returned in chat metadata.
+        :type id: str
+        :param languages: Optional comma-separated language string or sequence
+            of BCP 47 tags. Values are forwarded unchanged to AIL.
+        :type languages: str or sequence or None
+        :param page: One-based message page to request.
+        :type page: int
+        :param page_size: Maximum number of messages to request per page.
+        :type page_size: int
+        :return: Subchannel metadata, direct messages, and pagination metadata.
+        :rtype: dict
+        """
+        return self._get_chat_container_messages(
+            'chat/subchannel/messages', instance_uuid, id, languages, page,
+            page_size
+        )
+
+    def get_chat_thread_messages(self, instance_uuid, id,
+                                 languages=None, page=1, page_size=500):
+        """Retrieve one page of messages attached directly to a thread.
+
+        :param instance_uuid: UUID of the chat instance.
+        :type instance_uuid: str
+        :param id: Original thread identifier returned in container metadata.
+        :type id: str
+        :param languages: Optional comma-separated language string or sequence
+            of BCP 47 tags. Values are forwarded unchanged to AIL.
+        :type languages: str or sequence or None
+        :param page: One-based message page to request.
+        :type page: int
+        :param page_size: Maximum number of messages to request per page.
+        :type page_size: int
+        :return: Thread metadata, direct messages, and pagination metadata.
+        :rtype: dict
+        """
+        return self._get_chat_container_messages(
+            'chat/thread/messages', instance_uuid, id, languages, page,
+            page_size
+        )
+
+    @staticmethod
+    def _chat_query_params(page, page_size, languages=None, **params):
+        params.update({'page': page, 'page_size': page_size})
+        if languages is not None:
+            params['languages'] = languages
+        return params
+
+    def _get_chat_container_messages(self, endpoint, instance_uuid,
+                                     container_id, languages, page, page_size):
+        # Container identifiers deliberately remain query parameters: source
+        # identifiers can contain slashes and must not become URL path parts.
+        params = self._chat_query_params(
+            page, page_size, languages,
+            instance_uuid=instance_uuid,
+            id=container_id,
+        )
+        response = self._prepare_request(
+            'GET', f'api/{self.api_version}/{endpoint}', params=params
+        )
+        return self._check_json_response(response)
+
+    def get_chat_content(self, instance_uuid, id, languages=None,
+                         page_size=500):
+        """Retrieve a complete chat hierarchy from AIL.
+
+        This method downloads every page independently for the chat, each
+        subchannel, each thread attached directly to the chat, and each thread
+        attached to a subchannel. Message arrays retain the order supplied by
+        AIL. The result is returned in memory and is not written to disk.
+
+        :param instance_uuid: UUID of the chat instance.
+        :type instance_uuid: str
+        :param id: Original, unsanitized chat identifier returned by AIL.
+        :type id: str
+        :param languages: Optional comma-separated language string or sequence
+            of BCP 47 tags. The same value is forwarded unchanged to every
+            message request.
+        :type languages: str or sequence or None
+        :param page_size: Maximum number of messages requested for each page.
+        :type page_size: int
+        :return: Complete chat metadata, messages, subchannels, and threads.
+        :rtype: dict
+        :raises AILServerError: If AIL rejects a request during traversal.
+        :raises PyAILUnexpectedResponse: If AIL returns an invalid chat payload.
+        """
+        chat, messages = self._get_all_container_messages(
+            self.get_chat_messages, 'chat', instance_uuid, id,
+            languages, page_size
+        )
+
+        result = {
+            'chat': chat,
+            'messages': messages,
+            'subchannels': [],
+            'threads': [],
+        }
+        for child in chat.get('subchannels', []):
+            subchannel, child_messages = self._get_all_container_messages(
+                self.get_chat_subchannel_messages, 'subchannel', instance_uuid,
+                child['id'], languages, page_size
+            )
+            exported_subchannel = {
+                'subchannel': subchannel,
+                'messages': child_messages,
+                'threads': [],
+            }
+            for thread in subchannel.get('threads', []):
+                exported_subchannel['threads'].append(
+                    self._get_complete_thread(
+                        instance_uuid, thread['id'], languages, page_size
+                    )
+                )
+            result['subchannels'].append(exported_subchannel)
+
+        for thread in chat.get('threads', []):
+            result['threads'].append(
+                self._get_complete_thread(
+                    instance_uuid, thread['id'], languages, page_size
+                )
+            )
+        return result
+
+    def export_chat(self, instance_uuid, id, output_directory,
+                    languages=None, page_size=500):
+        """Export one complete chat to a JSON file.
+
+        The filename is derived from a filesystem-safe form of the original
+        chat ID and always ends in ``.json``. An existing file with that name is
+        replaced after the new export has been written successfully. The chat's
+        original, unsanitized ID remains present in its metadata.
+
+        :param instance_uuid: UUID of the chat instance.
+        :type instance_uuid: str
+        :param id: Original, unsanitized chat identifier returned by AIL.
+        :type id: str
+        :param output_directory: Directory in which to create the chat file.
+        :type output_directory: str or pathlib.Path
+        :param languages: Optional comma-separated language string or sequence
+            of BCP 47 tags. Values are forwarded unchanged to AIL.
+        :type languages: str or sequence or None
+        :param page_size: Maximum number of messages requested for each page.
+        :type page_size: int
+        :return: Path of the created chat JSON file.
+        :rtype: pathlib.Path
+        :raises AILServerError: If AIL rejects a request during export.
+        :raises PyAILUnexpectedResponse: If AIL returns an invalid chat payload.
+        """
+        directory = Path(output_directory)
+        directory.mkdir(parents=True, exist_ok=True)
+        destination = directory / self._chat_export_filename(id)
+        chat = self.get_chat_content(
+            instance_uuid, id, languages=languages, page_size=page_size
+        )
+
+        temporary = self._temporary_file(destination)
+        try:
+            self._write_json(temporary, chat)
+            self._replace_export_path(temporary, destination)
+        finally:
+            if temporary.exists():
+                temporary.unlink()
+        return destination
+
+    def export_chat_instance(self, instance_uuid, output_directory,
+                             languages=None, page_size=500,
+                             discovery_page_size=50):
+        """Export every chat belonging to a chat instance.
+
+        The method creates ``<output_directory>/<sanitized-instance-uuid>/``.
+        That directory contains ``metadata.json`` and a ``chats`` directory
+        with one complete JSON document per chat. ``metadata.json`` records the
+        original chat IDs and their generated filenames. An existing instance
+        export is replaced only after the new export completes successfully.
+
+        :param instance_uuid: UUID of the chat instance to export.
+        :type instance_uuid: str
+        :param output_directory: Parent directory for the instance export.
+        :type output_directory: str or pathlib.Path
+        :param languages: Optional comma-separated language string or sequence
+            of BCP 47 tags. The same value is forwarded unchanged to discovery
+            and every message request.
+        :type languages: str or sequence or None
+        :param page_size: Maximum number of messages requested per page for
+            each chat container.
+        :type page_size: int
+        :param discovery_page_size: Maximum number of chats requested per
+            instance-discovery page.
+        :type discovery_page_size: int
+        :return: Path of the created instance export directory.
+        :rtype: pathlib.Path
+        :raises AILServerError: If AIL rejects a request during export.
+        :raises PyAILUnexpectedResponse: If AIL returns an invalid chat payload.
+        """
+        export_root = Path(output_directory)
+        export_root.mkdir(parents=True, exist_ok=True)
+        destination = export_root / self._sanitize_export_name(
+            instance_uuid, fallback='instance'
+        )
+        staging = Path(tempfile.mkdtemp(
+            prefix=f'.{destination.name}.', dir=str(export_root)
+        ))
+        try:
+            chats, instance = self._get_all_chats(
+                instance_uuid, languages, discovery_page_size
+            )
+            chats_directory = staging / 'chats'
+            chats_directory.mkdir()
+            mapping = []
+            filenames = {}
+            for chat in chats:
+                chat_id = chat['id']
+                filename = self._chat_export_filename(chat_id)
+                if filename in filenames and filenames[filename] != chat_id:
+                    stem = filename[:-5]
+                    filename = f'{stem}-{uuid4()}.json'
+                    while filename in filenames:
+                        filename = f'{stem}-{uuid4()}.json'
+                filenames[filename] = chat_id
+                complete_chat = self.get_chat_content(
+                    instance_uuid, chat_id, languages=languages,
+                    page_size=page_size
+                )
+                self._write_json(chats_directory / filename, complete_chat)
+                mapping.append({'id': chat_id, 'filename': f'chats/{filename}'})
+
+            metadata = {
+                'instance': instance,
+                'options': {
+                    'languages': languages,
+                    'page_size': page_size,
+                    'discovery_page_size': discovery_page_size,
+                },
+                'chats': mapping,
+            }
+            self._write_json(staging / 'metadata.json', metadata)
+            self._replace_export_path(staging, destination)
+        finally:
+            if staging.exists():
+                shutil.rmtree(staging)
+        return destination
+
+    def _get_complete_thread(self, instance_uuid, thread_id, languages,
+                             page_size):
+        thread, messages = self._get_all_container_messages(
+            self.get_chat_thread_messages, 'thread', instance_uuid, thread_id,
+            languages, page_size
+        )
+        return {'thread': thread, 'messages': messages}
+
+    def _get_all_container_messages(self, method, metadata_key, instance_uuid,
+                                    container_id, languages, page_size):
+        first = method(
+            instance_uuid, container_id, languages=languages,
+            page=1, page_size=page_size
+        )
+        metadata, messages, page_count = self._parse_chat_page(
+            first, metadata_key
+        )
+        for page in range(2, page_count + 1):
+            response = method(
+                instance_uuid, container_id, languages=languages,
+                page=page, page_size=page_size
+            )
+            _, page_messages, _ = self._parse_chat_page(
+                response, metadata_key
+            )
+            self._append_messages(messages, page_messages)
+        return metadata, messages
+
+    def _get_all_chats(self, instance_uuid, languages, page_size):
+        response = self.get_chats(
+            instance_uuid, languages=languages, page=1, page_size=page_size
+        )
+        self._raise_chat_api_error(response)
+        try:
+            instance = response['instance']
+            chats = list(response['chats'])
+            page_count = int(response['pagination']['page_count'])
+        except (KeyError, TypeError, ValueError) as error:
+            raise PyAILUnexpectedResponse(
+                'Invalid chat discovery response.'
+            ) from error
+        for page in range(2, page_count + 1):
+            response = self.get_chats(
+                instance_uuid, languages=languages, page=page,
+                page_size=page_size
+            )
+            self._raise_chat_api_error(response)
+            try:
+                chats.extend(response['chats'])
+            except (KeyError, TypeError) as error:
+                raise PyAILUnexpectedResponse(
+                    'Invalid chat discovery response.'
+                ) from error
+        return chats, instance
+
+    @classmethod
+    def _parse_chat_page(cls, response, metadata_key):
+        cls._raise_chat_api_error(response)
+        try:
+            metadata = response[metadata_key]
+            messages = {
+                date_key: list(values)
+                for date_key, values in response['messages'].items()
+            }
+            page_count = int(response['pagination']['page_count'])
+        except (KeyError, TypeError, ValueError) as error:
+            raise PyAILUnexpectedResponse(
+                f'Invalid {metadata_key} message response.'
+            ) from error
+        return metadata, messages, page_count
+
+    @staticmethod
+    def _raise_chat_api_error(response):
+        if isinstance(response, dict) and 'errors' in response:
+            raise AILServerError(f'Chat API request failed: {response["errors"]}')
+        if not isinstance(response, dict):
+            raise PyAILUnexpectedResponse('Invalid chat API response.')
+
+    @staticmethod
+    def _append_messages(messages, page_messages):
+        for date_key, values in page_messages.items():
+            messages.setdefault(date_key, []).extend(values)
+
+    @staticmethod
+    def _chat_export_filename(chat_id):
+        return f'{PyAIL._sanitize_export_name(chat_id, fallback="chat")}.json'
+
+    @staticmethod
+    def _sanitize_export_name(value, fallback):
+        normalized = unicodedata.normalize('NFKC', str(value))
+        base = re.sub(r'[^A-Za-z0-9._-]+', '_', normalized)
+        return base.strip('._-')[:120] or fallback
+
+    @staticmethod
+    def _temporary_file(destination):
+        descriptor, filename = tempfile.mkstemp(
+            prefix=f'.{destination.name}.', dir=str(destination.parent)
+        )
+        os.close(descriptor)
+        return Path(filename)
+
+    @staticmethod
+    def _write_json(path, value):
+        with path.open('w', encoding='utf-8') as export_file:
+            json.dump(
+                value, export_file, default=ail_json_default,
+                ensure_ascii=False, indent=2, sort_keys=True
+            )
+            export_file.write('\n')
+
+    @staticmethod
+    def _replace_export_path(staging, destination):
+        if not destination.exists():
+            os.replace(str(staging), str(destination))
+            return
+
+        backup = destination.with_name(
+            f'.{destination.name}.backup-{os.getpid()}-{time.time_ns()}'
+        )
+        os.replace(str(destination), str(backup))
+        try:
+            os.replace(str(staging), str(destination))
+        except Exception:
+            os.replace(str(backup), str(destination))
+            raise
+        if backup.is_dir():
+            shutil.rmtree(backup)
+        else:
+            backup.unlink()
+
+    ## -- Chats -- ##
 
     ## -- AIL Server -- ##
 
@@ -360,4 +823,3 @@ class PyAIL:
     # add_object / create_object -> accept AILObject + dict/json -> type or var like pythonify
 
     # direct_call but a with better name
-

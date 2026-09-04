@@ -52,14 +52,40 @@ pyail.feed_json_item(data, metadata, source, source_uuid)
 pyail.import_crawler_capture(capture={"last_redirected_url": "https://mywebsite.com", "html": "<html><body><h1>HELLO WORLD</h1></body></html>"})
 ```
 
+### Export chats
+
+Export one chat, including its messages, subchannels, and threads, to a JSON
+file:
+
+```python
+pyail.export_chat(
+    '<chat instance UUID>',
+    '<chat ID>',
+    'exports',
+    languages=['en', 'fr'],
+)
+```
+
+Export every chat from an instance:
+
+```python
+pyail.export_chat_instance(
+    '<chat instance UUID>',
+    'exports',
+    languages=['en', 'fr'],
+)
+```
+
+Exports stream directly to disk and overwrite existing files. A single chat is saved as `exports/<sanitized-chat-id>.json`. 
+An instance is saved under `exports/<sanitized-instance-uuid>/`, with `metadata.json` and one file per chat in `chats/`. `languages` 
+can be a comma-separated string or a sequence of language tags.
+
+
 # License
 
 
 This software is licensed under BSD 3-Clause License
 
-Copyright (C) 2020-2025 CIRCL - Computer Incident Response Center Luxembourg
+Copyright (C) 2020-2026 CIRCL - Computer Incident Response Center Luxembourg
 
-Copyright (C) 2020-2025 Aurelien Thirion
-
-
-
+Copyright (C) 2020-2026 Aurelien Thirion

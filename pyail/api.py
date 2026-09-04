@@ -3,16 +3,20 @@
 import json
 import logging
 import requests
+import shutil
 import sys
 import time
 import traceback
 
 from datetime import date, datetime
+from pathlib import Path
 from urllib.parse import urljoin
+from uuid import uuid4
 
 from . import __version__, everything_broken
-from .core import encode_and_compress_data, get_data_sha256, ail_json_default
-from .exceptions import PyAILError, MissingDependency, NoURL, NoKey, PyAILInvalidFormat, AILServerError, PyAILNotImplementedYet, PyAILUnexpectedResponse, PyAILEmptyResponse
+from .chat import append_messages, chat_export_filename, chat_query_params, languages_for_json, parse_chat_discovery_page, parse_chat_page, raise_chat_api_error
+from .core import dump_json_value, encode_and_compress_data, get_data_sha256, sanitize_export_name, write_json
+from .exceptions import PyAILError, MissingDependency, NoURL, NoKey, PyAILInvalidFormat, PyAILNotImplementedYet, PyAILUnexpectedResponse, PyAILEmptyResponse
 
 logger = logging.getLogger('pyail')
 
@@ -105,6 +109,367 @@ class PyAIL:
         response = self._prepare_request('GET', f'api/{self.api_version}/version')
         return self._check_json_response(response)
 
+    #### Chats ####
+
+    def get_chat_instances(self, page=1, page_size=50):
+        """Get chat instances.
+
+        A chat instance represents a source or platform containing chats.
+
+        :param page: Page number, starting at 1.
+        :type page: int
+        :param page_size: Number of chat instances per page.
+        :type page_size: int
+        :return: A dictionary containing ``instances`` and ``pagination``.
+        :rtype: dict
+        """
+        params = {'page': page, 'page_size': page_size}
+        response = self._prepare_request('GET', f'api/{self.api_version}/chat/instances', params=params)
+        return self._check_json_response(response)
+
+    def get_chats(self, instance_uuid, languages=None, page=1, page_size=50):
+        """Get chat instance chats.
+
+        The optional language filter selects chats containing at least one of the
+        specified languages.
+
+        :param instance_uuid: UUID of the chat instance.
+        :type instance_uuid: str
+        :param languages: Language filter as a comma-separated string or sequence of BCP 47 language tags.
+        :type languages: str or sequence or None
+        :param page: Page number, starting at 1.
+        :type page: int
+        :param page_size: Number of chats per page.
+        :type page_size: int
+        :return: A dictionary containing ``instance``, ``chats``, and ``pagination``.
+        :rtype: dict
+        """
+        params = chat_query_params(page, page_size, languages)
+        response = self._prepare_request('GET',f'api/{self.api_version}/chat/instances/{instance_uuid}/chats', params=params)
+        return self._check_json_response(response)
+
+    def get_chat_messages(self, instance_uuid, id, languages=None, page=1, page_size=500):
+        """Get chat messages.
+
+        Messages from subchannels and threads are not included.
+
+        :param instance_uuid: UUID of the chat instance.
+        :type instance_uuid: str
+        :param id: ID of the chat.
+        :type id: str
+        :param languages: Language filter as a comma-separated string or sequence of BCP 47 language tags.
+        :type languages: str or sequence or None
+        :param page: Page number, starting at 1.
+        :type page: int
+        :param page_size: Number of messages per page.
+        :type page_size: int
+        :return: A dictionary containing ``chat``, ``messages``, and ``pagination``.
+        :rtype: dict
+        """
+        return self._get_chat_container_messages('chat/messages', instance_uuid, id, languages, page, page_size)
+
+    def get_chat_subchannel_messages(self, instance_uuid, id, languages=None, page=1, page_size=500):
+        """Get chat subchannel messages.
+
+        Messages from threads are not included.
+
+        :param instance_uuid: UUID of the chat instance.
+        :type instance_uuid: str
+        :param id: ID of the subchannel.
+        :type id: str
+        :param languages: Language filter as a comma-separated string or sequence of BCP 47 language tags.
+        :type languages: str or sequence or None
+        :param page: Page number, starting at 1.
+        :type page: int
+        :param page_size: Number of messages per page.
+        :type page_size: int
+        :return: A dictionary containing ``subchannel``, ``messages``, and ``pagination``.
+        :rtype: dict
+        """
+
+        return self._get_chat_container_messages('chat/subchannel/messages', instance_uuid, id, languages, page, page_size)
+
+    def get_chat_thread_messages(self, instance_uuid, id, languages=None, page=1, page_size=500):
+        """Get chat thread messages.
+
+        :param instance_uuid: UUID of the chat instance.
+        :type instance_uuid: str
+        :param id: ID of the thread.
+        :type id: str
+        :param languages: Language filter as a comma-separated string or sequence of BCP 47 language tags.
+        :type languages: str or sequence or None
+        :param page: Page number, starting at 1.
+        :type page: int
+        :param page_size: Number of messages per page.
+        :type page_size: int
+        :return: A dictionary containing ``thread``, ``messages``, and ``pagination``.
+        :rtype: dict
+        """
+        return self._get_chat_container_messages('chat/thread/messages', instance_uuid, id, languages, page, page_size)
+
+    # def get_chat_content(self, instance_uuid, id, languages=None, page_size=500):
+    #     """Get a complete chat content, including its subchannels and threads.
+    #
+    # All independently paginated messages are assembled into one dictionary.
+    #
+    #     :param instance_uuid: UUID of the chat instance.
+    #     :type instance_uuid: str
+    #     :param id: ID of the chat.
+    #     :type id: str
+    #     :param languages: Language filter as a comma-separated string or sequence of BCP 47 language tags.
+    #     :type languages: str or sequence or None
+    #     :param page_size: Number of messages requested per page for each container.
+    #     :type page_size: int
+    #     :return: A dictionary containing the chat metadata, messages, subchannels, and threads.
+    #     :rtype: dict
+    #     """
+    #     chat, messages = self._get_all_container_messages(self.get_chat_messages, 'chat', instance_uuid, id, languages, page_size)
+    #     result = {
+    #         'chat': chat,
+    #         'messages': messages,
+    #         'subchannels': [],
+    #         'threads': [],
+    #     }
+    #     for child in chat.get('subchannels', []):
+    #         subchannel, child_messages = self._get_all_container_messages(
+    #             self.get_chat_subchannel_messages, 'subchannel', instance_uuid,
+    #             child['id'], languages, page_size
+    #         )
+    #         exported_subchannel = {
+    #             'subchannel': subchannel,
+    #             'messages': child_messages,
+    #             'threads': [],
+    #         }
+    #         for thread in subchannel.get('threads', []):
+    #             exported_subchannel['threads'].append(
+    #                 self._get_complete_thread(instance_uuid, thread['id'], languages, page_size)
+    #             )
+    #         result['subchannels'].append(exported_subchannel)
+    #
+    #     for thread in chat.get('threads', []):
+    #         result['threads'].append(
+    #             self._get_complete_thread(instance_uuid, thread['id'], languages, page_size)
+    #         )
+    #     return result
+
+    def export_chat(self, instance_uuid, id, output_directory, languages=None, page_size=500):
+        """Export a complete chat to a JSON file.
+
+        The export includes the chat's messages, subchannels, and threads. Its filename is based on the sanitized chat ID, and an existing file is overwritten.
+
+        :param instance_uuid: UUID of the chat instance.
+        :type instance_uuid: str
+        :param id: ID of the chat.
+        :type id: str
+        :param output_directory: Directory in which to create the JSON file.
+        :type output_directory: str or pathlib.Path
+        :param languages: Language filter as a comma-separated string or sequence of BCP 47 language tags.
+        :type languages: str or sequence or None
+        :param page_size: Number of messages requested per page for each container.
+        :type page_size: int
+        :return: Path to the created JSON file.
+        :rtype: pathlib.Path
+        """
+        directory = Path(output_directory)
+        directory.mkdir(parents=True, exist_ok=True)
+        destination = directory / chat_export_filename(id)
+        with destination.open('w', encoding='utf-8') as export_file:
+            self._write_chat_content(export_file, instance_uuid, id, languages, page_size)
+            export_file.write('\n')
+        return destination
+
+    def export_chat_instance(self, instance_uuid, output_directory,
+                             languages=None, page_size=500, discovery_page_size=50):
+        """Export every matching chat from an instance to a directory.
+
+        The export contains ``metadata.json`` and a ``chats`` directory with one complete JSON file per chat. An existing instance export is overwritten.
+
+        :param instance_uuid: UUID of the chat instance.
+        :type instance_uuid: str
+        :param output_directory: Parent directory in which to create the instance directory.
+        :type output_directory: str or pathlib.Path
+        :param languages: Language filter as a comma-separated string or sequence of BCP 47 language tags.
+        :type languages: str or sequence or None
+        :param page_size: Number of messages requested per page for each container.
+        :type page_size: int
+        :param discovery_page_size: Number of chats requested per discovery page.
+        :type discovery_page_size: int
+        :return: Path to the created instance directory.
+        :rtype: pathlib.Path
+        """
+        export_root = Path(output_directory)
+        export_root.mkdir(parents=True, exist_ok=True)
+        destination = export_root / sanitize_export_name(instance_uuid, fallback='instance')
+        if destination.is_dir():
+            shutil.rmtree(destination)
+        elif destination.exists():
+            destination.unlink()
+        first = self.get_chats(
+            instance_uuid, languages=languages, page=1,
+            page_size=discovery_page_size
+        )
+        instance, first_chats, page_count = parse_chat_discovery_page(first)
+        chats_directory = destination / 'chats'
+        chats_directory.mkdir(parents=True)
+        mapping = []
+        filenames = {}
+        metadata = {
+            'instance': instance,
+            'options': {
+                'languages': languages_for_json(languages),
+                'page_size': page_size,
+                'discovery_page_size': discovery_page_size,
+            },
+            'chats': mapping,
+        }
+        metadata_path = destination / 'metadata.json'
+        write_json(metadata_path, metadata)
+
+        for page in range(1, page_count + 1):
+            if page == 1:
+                chats = first_chats
+            else:
+                response = self.get_chats(
+                    instance_uuid, languages=languages, page=page,
+                    page_size=discovery_page_size
+                )
+                _, chats, _ = parse_chat_discovery_page(response)
+            for chat in chats:
+                chat_id = chat['id']
+                filename = chat_export_filename(chat_id)
+                if filename in filenames and filenames[filename] != chat_id:
+                    stem = filename[:-5]
+                    filename = f'{stem}-{uuid4()}.json'
+                    while filename in filenames:
+                        filename = f'{stem}-{uuid4()}.json'
+                filenames[filename] = chat_id
+                with (chats_directory / filename).open('w', encoding='utf-8') as export_file:
+                    self._write_chat_content(export_file, instance_uuid, chat_id, languages, page_size)
+                    export_file.write('\n')
+                mapping.append({'id': chat_id, 'filename': f'chats/{filename}'})
+                write_json(metadata_path, metadata)
+        return destination
+
+    def _get_chat_container_messages(self, endpoint, instance_uuid, container_id, languages, page, page_size):
+        params = chat_query_params(page, page_size, languages, instance_uuid=instance_uuid, id=container_id)
+        response = self._prepare_request('GET', f'api/{self.api_version}/{endpoint}', params=params)
+        return self._check_json_response(response)
+
+    def _write_chat_content(self, export_file, instance_uuid, id, languages, page_size):
+        first = self.get_chat_messages(instance_uuid, id, languages=languages, page=1, page_size=page_size)
+        chat, _, _ = parse_chat_page(first, 'chat')
+        export_file.write('{"chat":')
+        dump_json_value(export_file, chat)
+        export_file.write(',"messages":')
+        self._write_message_pages(
+            export_file, first, self.get_chat_messages, 'chat', instance_uuid,
+            id, languages, page_size
+        )
+        export_file.write(',"subchannels":[')
+        for index, subchannel in enumerate(chat.get('subchannels', [])):
+            if index:
+                export_file.write(',')
+            self._write_subchannel_content(
+                export_file, instance_uuid, subchannel['id'], languages,
+                page_size
+            )
+        export_file.write('],"threads":[')
+        for index, thread in enumerate(chat.get('threads', [])):
+            if index:
+                export_file.write(',')
+            self._write_thread_content(
+                export_file, instance_uuid, thread['id'], languages, page_size
+            )
+        export_file.write(']}')
+
+    def _write_subchannel_content(self, export_file, instance_uuid, id, languages, page_size):
+        first = self.get_chat_subchannel_messages(instance_uuid, id, languages=languages, page=1, page_size=page_size)
+        subchannel, _, _ = parse_chat_page(first, 'subchannel')
+        export_file.write('{"subchannel":')
+        dump_json_value(export_file, subchannel)
+        export_file.write(',"messages":')
+        self._write_message_pages(
+            export_file, first, self.get_chat_subchannel_messages,
+            'subchannel', instance_uuid, id, languages, page_size
+        )
+        export_file.write(',"threads":[')
+        for index, thread in enumerate(subchannel.get('threads', [])):
+            if index:
+                export_file.write(',')
+            self._write_thread_content(
+                export_file, instance_uuid, thread['id'], languages, page_size
+            )
+        export_file.write(']}')
+
+    def _write_thread_content(self, export_file, instance_uuid, id, languages, page_size):
+        first = self.get_chat_thread_messages(instance_uuid, id, languages=languages, page=1, page_size=page_size)
+        thread, _, _ = parse_chat_page(first, 'thread')
+        export_file.write('{"thread":')
+        dump_json_value(export_file, thread)
+        export_file.write(',"messages":')
+        self._write_message_pages(
+            export_file, first, self.get_chat_thread_messages, 'thread',
+            instance_uuid, id, languages, page_size
+        )
+        export_file.write('}')
+
+    def _write_message_pages(self, export_file, first, chat_function, metadata_key, instance_uuid, id, languages, page_size):
+        _, _, page_count = parse_chat_page(first, metadata_key)
+        export_file.write('{')
+        current_date = None
+        has_message = False
+        for page in range(1, page_count + 1):
+            response = first if page == 1 else chat_function(instance_uuid, id, languages=languages, page=page, page_size=page_size)
+            _, messages, _ = parse_chat_page(response, metadata_key)
+            for date_key, values in messages.items():
+                if current_date != date_key:
+                    if current_date is not None:
+                        export_file.write(']')
+                    if current_date is not None:
+                        export_file.write(',')
+                    dump_json_value(export_file, date_key)
+                    export_file.write(':[')
+                    current_date = date_key
+                    has_message = False
+                for message in values:
+                    if has_message:
+                        export_file.write(',')
+                    dump_json_value(export_file, message)
+                    has_message = True
+            export_file.flush()
+        if current_date is not None:
+            export_file.write(']')
+        export_file.write('}')
+
+    def _get_complete_thread(self, instance_uuid, thread_id, languages, page_size):
+        thread, messages = self._get_all_container_messages(
+            self.get_chat_thread_messages, 'thread', instance_uuid, thread_id,
+            languages, page_size
+        )
+        return {'thread': thread, 'messages': messages}
+
+    def _get_all_container_messages(self, method, metadata_key, instance_uuid, container_id, languages, page_size):
+        first = method(instance_uuid, container_id, languages=languages, page=1, page_size=page_size)
+        metadata, messages, page_count = parse_chat_page(first, metadata_key)
+        for page in range(2, page_count + 1):
+            response = method(instance_uuid, container_id, languages=languages, page=page, page_size=page_size)
+            _, page_messages, _ = parse_chat_page(response, metadata_key)
+            append_messages(messages, page_messages)
+        return metadata, messages
+
+    def _get_all_chats(self, instance_uuid, languages, page_size):
+        response = self.get_chats(instance_uuid, languages=languages, page=1, page_size=page_size)
+        instance, chats, page_count = parse_chat_discovery_page(response)
+        for page in range(2, page_count + 1):
+            response = self.get_chats(instance_uuid, languages=languages, page=page, page_size=page_size)
+            raise_chat_api_error(response)
+            try:
+                chats.extend(response['chats'])
+            except (KeyError, TypeError) as error:
+                raise PyAILUnexpectedResponse('Invalid chat discovery response.') from error
+        return chats, instance
+
+    ## -- Chats -- ##
     ## -- AIL Server -- ##
 
     #### AIL Object ####  # TODO get meta/object fields description
@@ -360,4 +725,3 @@ class PyAIL:
     # add_object / create_object -> accept AILObject + dict/json -> type or var like pythonify
 
     # direct_call but a with better name
-

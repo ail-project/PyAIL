@@ -16,7 +16,7 @@ from uuid import uuid4
 from . import __version__, everything_broken
 from .chat import append_messages, chat_export_filename, chat_query_params, languages_for_json, parse_chat_discovery_page, parse_chat_page, raise_chat_api_error
 from .core import dump_json_value, encode_and_compress_data, get_data_sha256, sanitize_export_name, write_json
-from .exceptions import PyAILError, MissingDependency, NoURL, NoKey, PyAILInvalidFormat, PyAILNotImplementedYet, PyAILUnexpectedResponse, PyAILEmptyResponse
+from .exceptions import AILServerError, PyAILError, MissingDependency, NoURL, NoKey, PyAILInvalidFormat, PyAILNotImplementedYet, PyAILUnexpectedResponse, PyAILEmptyResponse
 
 logger = logging.getLogger('pyail')
 

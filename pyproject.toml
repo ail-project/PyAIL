@@ -1,6 +1,6 @@
 [project]
 name = "pyail"
-version = "0.0.16"
+version = "0.0.17"
 description = "Python API for AIL"
 authors = [
     {name="Aurelien Thirion (terrtia)", email="<aurelien.thirion@circl.lu>"}

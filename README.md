@@ -36,6 +36,20 @@ except Exception as e:
 pyail.ping()
 ```
 
+### Proxy authentication
+
+For a reverse proxy using HTTP Basic authentication:
+
+```python
+from requests.auth import HTTPBasicAuth
+
+pyail = PyAIL(
+    'https://example.org/ail',
+    '<AIL API KEY>',
+    auth=HTTPBasicAuth('<PROXY USERNAME>', '<PROXY PASSWORD>'),
+)
+```
+
 ### Feeding items to AIL
 
 ```python

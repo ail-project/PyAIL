@@ -60,7 +60,7 @@ class PyAIL:
         if not key:
             raise NoKey('Please provide your authorization key.')
 
-        self.root_url = url
+        self.root_url = url.rstrip('/') + '/'
         self.key = key
         self.ssl = ssl
         self.api_version = api_version
@@ -69,6 +69,7 @@ class PyAIL:
         self.auth = auth
         self.tool = tool
         self.timeout = timeout
+        self.api_key_header = 'X-AIL-AUTH' if auth else 'Authorization'
 
         if debug:
             logger.setLevel(logging.DEBUG)
@@ -694,13 +695,17 @@ class PyAIL:
                 user_agent = f'{user_agent} - {self.tool}'
             req.auth = self.auth
             prepped = s.prepare_request(req)
-            prepped.headers.update(
-                {'Authorization': self.key,
+            headers = {self.api_key_header: self.key,
                  'Accept': f'application/{output_type}',
                  'content-type': f'application/{output_type}',
-                 'User-Agent': user_agent})
+                 'User-Agent': user_agent}
+            prepped.headers.update(headers)
             if logger.isEnabledFor(logging.DEBUG):
-                logger.debug(prepped.headers)
+                safe_headers = dict(prepped.headers)
+                for header in ('Authorization', self.api_key_header):
+                    if header in safe_headers:
+                        safe_headers[header] = '<redacted>'
+                logger.debug(safe_headers)
             settings = s.merge_environment_settings(req.url, proxies=self.proxies or {}, stream=None, verify=self.ssl, cert=self.cert)
             return s.send(prepped, timeout=self.timeout, **settings)
 
